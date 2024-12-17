@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Polygon Viewer</title>
+    <script
+      async
+      defer
+      src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_api_key }}"
+    ></script>
+    <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="map"></div>
+
+    <script nonce="{{ nonce }}">
+      const socket = io("http://127.0.0.1:5000", {
+        reconnection: true, // Enable automatic reconnection
+        reconnectionAttempts: 5, // Maximum number of attempts
+        reconnectionDelay: 1000, // Initial delay between attempts (in ms)
+        reconnectionDelayMax: 5000, // Maximum delay between attempts
+        timeout: 20000, // Connection timeout (in ms)});
+      });
+      let polygon;
+
+      const map = new google.maps.Map(document.getElementById("map"), {
+        center: { lat: 59.0, lng: 5.3 },
+        zoom: 8,
+      });
+
+      // Handle successful connection
+      socket.on("connect", () => {
+        console.log("Connected to the server!");
+      });
+
+      // Handle connection errors
+      socket.on("connect_error", (error) => {
+        console.error("Connection error:", error.message);
+      });
+
+      // Handle reconnection attempts
+      socket.on("reconnect_attempt", (attempt) => {
+        console.log(`Reconnection attempt #${attempt}`);
+      });
+
+      // Handle successful reconnection
+      socket.on("reconnect", (attempt) => {
+        console.log(`Reconnected after ${attempt} attempts!`);
+      });
+
+      // Handle reconnection failure
+      socket.on("reconnect_failed", () => {
+        console.error("Reconnection failed after maximum attempts.");
+      });
+
+      // Handle disconnection
+      socket.on("disconnect", (reason) => {
+        console.warn(`Disconnected: ${reason}`);
+        if (reason === "io server disconnect") {
+          // Manually reconnect if the server explicitly disconnects
+          socket.connect();
+        }
+      });
+
+      socket.emit("polygon_update");
+      socket.on("polygon_update_reply", (data) => {
+        console.log(data);
+        if (!data || !data.coordinates || !data.coordinates.length) return;
+
+        const polygonCoords = data.coordinates.map(([lat, lng]) => ({
+          lat,
+          lng,
+        }));
+
+        map.setCenter(polygonCoords[0]);
+
+        // Create and style the polygon
+        createPolygon(polygonCoords, map, data);
+      });
+
+      function createPolygon(coordinates, map, data) {
+        if (polygon) polygon.setMap(null); // Remove existing polygon
+
+        polygon = new google.maps.Polygon({
+          paths: coordinates,
+          strokeColor: "#FF0000", // Outline color
+          strokeOpacity: 0.8, // Outline transparency
+          strokeWeight: 2, // Outline width
+          fillColor: "#FF0000", // Fill color
+          fillOpacity: 0.35, // Fill transparency
+        });
+
+        polygon.setMap(map);
+
+        // Add mouseover and mouseout listeners
+        polygon.addListener("mouseover", (event) => {
+          // Change the style on hover
+          polygon.setOptions({
+            fillOpacity: 0.6,
+            strokeWeight: 4,
+          });
+
+          const polygonInfo = `
+            <div>
+              <h3>Polygon Information</h3>
+              <p>${data}</p>
+              <p><strong>Coordinates:</strong></p>
+              <ul>
+                ${polygon
+                  .getPath()
+                  .getArray()
+                  .map((coord) => `<li>${coord.lat()}, ${coord.lng()}</li>`)
+                  .join("")}
+              </ul>
+            </div>
+          `;
+
+          // Display information about the polygon
+          const infoWindow = new google.maps.InfoWindow({
+            content: polygonInfo,
+            position: event.latLng, // Position near the cursor
+          });
+          infoWindow.open(map);
+
+          // Store the info window to close it later
+          polygon.infoWindow = infoWindow;
+        });
+
+        polygon.addListener("mouseout", () => {
+          // Revert the style
+          polygon.setOptions({
+            fillOpacity: 0.35,
+            strokeWeight: 2,
+          });
+
+          // Close the info window
+          if (polygon.infoWindow) {
+            polygon.infoWindow.close();
+            polygon.infoWindow = null;
+          }
+        });
+      }
+    </script>
+  </body>
+</html>

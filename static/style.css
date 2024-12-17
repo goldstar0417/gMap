@@ -1,0 +1,13 @@
+/* Basic styling for the front-end. */
+
+body, html {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+}
+
+#map {
+    height: 100%;
+    width: 100%;
+}
